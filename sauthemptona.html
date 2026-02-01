@@ -333,7 +333,7 @@
     const mcaInput = document.getElementById('mca-input');
     const mcaFeedback = document.getElementById('mca-feedback');
 
-    const socket = io("http://localhost:3000")
+    const socket = io(window.location.origin)
 
     socket.on('connect', () => { mcaFeedback.innerText = "ERAM CONNECTED"; });
 
