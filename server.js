@@ -10,70 +10,69 @@ const io = new Server(server, {
     transports: ['polling', 'websocket']
 });
 
+app.use(express.static(__dirname));
+
 // --- API CONFIG ---
 const RELAY_BASE_URL = "https://ws.awdevsoftware.org";
 const FPL_API_BASE_URL = "https://ws.awdevsoftware.org";
+const CONTROLLER_API = "https://ws.awdevsoftware.org/controllers";
 
 let globalPlanes = {}; 
 
-// --- THE TWO-STAGE JANITOR (CLEANS SCREEN ONLY) ---
-setInterval(() => {
-    const now = Date.now();
-    let updated = false;
-
-    for (const callsign in globalPlanes) {
-        const ac = globalPlanes[callsign];
-        const age = now - ac.lastUpdate;
-
-        // Stage 1: Coasting (10s no data)
-        if (age > 10000 && !ac.isCoasting) {
-            ac.isCoasting = true;
-            updated = true;
-        }
-
-        // Stage 2: Remove from radar (15s no data)
-        if (age > 15000) {
-            delete globalPlanes[callsign];
-            updated = true;
-        }
-    }
-
-    if (updated) io.emit('radarUpdate', globalPlanes);
-}, 2000);
-
-// --- SOCKET CONNECTION ---
+// --- SINGLE SOCKET CONNECTION BLOCK ---
 io.on('connection', (socket) => {
     console.log(`User Connected: ${socket.id}`);
 
-    // Receive radar data from Roblox Bridge
+    // Home Page Sector Check
+    socket.on('checkAvailability', async () => {
+        try {
+            const response = await axios.get(CONTROLLER_API);
+            const data = response.data;
+            const sectors = ["IRCC", "ICCC", "IZCC", "IOCC", "IPCC", "IBCC", "IGCC", "ISCC"];
+            const status = {};
+
+            sectors.forEach(code => {
+                const match = data.find(c => c.airport === code && c.position === "CTR");
+                status[code] = match ? { taken: true, holder: match.holder } : { taken: false };
+            });
+            socket.emit('availabilityStatus', status);
+        } catch (err) {
+            console.error("API Error (Availability):", err.message);
+        }
+    });
+
+    // Manual Update from Bridge (if used)
     socket.on('updateData', async (data) => {
         if (!data || !data.playerName) return;
-
-        // Fetch flight plan from your database
-        try {
-            const response = await axios.get(`${FPL_API_BASE_URL}/fpls/${data.playerName}`);
-            data.flightPlan = response.data; 
-        } catch (err) {
-            data.flightPlan = null;
-        }
-
         data.lastUpdate = Date.now();
         data.isCoasting = false; 
         globalPlanes[data.callsign || data.playerName] = data;
-        
         io.emit('radarUpdate', globalPlanes);
     });
 
-    // Handle Amendments (AM Commands)
     socket.on('updateFPLField', async (payload) => {
         const { robloxName, field, value } = payload;
         try {
-            await axios.patch(`${FPL_API_BASE_URL}/fpls/${robloxName}`, {
-                [field]: value
-            });
-            console.log(`✅ ${field} updated for ${robloxName}`);
+            await axios.patch(`${FPL_API_BASE_URL}/fpls/${robloxName}`, { [field]: value });
         } catch (err) {
             console.error("❌ Amendment Failed:", err.message);
+        }
+    });
+
+    // --- HANDOFF LISTENERS (MOVED INSIDE CONNECTION BLOCK) ---
+    socket.on('initiateHandoff', (payload) => {
+        const { callsign, targetSector } = payload;
+        if (globalPlanes[callsign]) {
+            globalPlanes[callsign].handoffTarget = targetSector;
+            io.emit('radarUpdate', globalPlanes);
+        }
+    });
+
+    socket.on('acceptHandoff', (payload) => {
+        const { callsign } = payload;
+        if (globalPlanes[callsign]) {
+            globalPlanes[callsign].handoffTarget = null;
+            io.emit('radarUpdate', globalPlanes);
         }
     });
 
@@ -82,10 +81,25 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- NEW DATA POLLING LOGIC ---
-// This hits the relay endpoints you provided every second
-// --- NEW DATA POLLING LOGIC (CORRECTED MAPPING) ---
-// --- NEW DATA POLLING LOGIC (STRICT MAPPING) ---
+// --- THE TWO-STAGE JANITOR ---
+setInterval(() => {
+    const now = Date.now();
+    let updated = false;
+    for (const callsign in globalPlanes) {
+        const ac = globalPlanes[callsign];
+        const age = now - ac.lastUpdate;
+        if (age > 10000 && !ac.isCoasting) {
+            ac.isCoasting = true;
+            updated = true;
+        }
+        if (age > 15000) {
+            delete globalPlanes[callsign];
+            updated = true;
+        }
+    }
+    if (updated) io.emit('radarUpdate', globalPlanes);
+}, 2000);
+
 // --- BULLETPROOF POLLING LOGIC ---
 setInterval(async () => {
     try {
@@ -97,79 +111,62 @@ setInterval(async () => {
         const acftData = acftRes.data; 
         const allFpls = fplsRes.data;
 
-       for (const key in acftData) {
-    const raw = acftData[key];
-    if (!raw || !raw.position) continue;
+        for (const key in acftData) {
+            const raw = acftData[key];
+            if (!raw || !raw.position) continue;
 
-    const pilot = raw.playerName;
-    const actualCallsign = raw.callsign || key;
+            const pilot = raw.playerName;
+            const actualCallsign = raw.callsign || key;
+            
+            let foundFpl = null;
+            if (Array.isArray(allFpls)) {
+                foundFpl = allFpls.find(f => f.robloxName === pilot || f.callsign === actualCallsign);
+            }
 
-    let foundFpl = null;
-    if (Array.isArray(allFpls)) {
-        foundFpl = allFpls.find(f => f.robloxName === pilot || f.callsign === actualCallsign);
-    }
+            function generateOctalSquawk() {
+                const forbidden = ['1200', '7500', '7600', '7700'];
+                let squawk;
+                do {
+                    squawk = Array.from({ length: 4 }, () => Math.floor(Math.random() * 8)).join('');
+                } while (forbidden.includes(squawk));
+                return squawk;
+            }
 
-    function generateOctalSquawk() {
-    const forbidden = ['1200', '7500', '7600', '7700'];
-    let squawk;
-    do {
-        // Generates 4 digits, each between 0-7
-        squawk = Array.from({ length: 4 }, () => Math.floor(Math.random() * 8)).join('');
-    } while (forbidden.includes(squawk));
-    return squawk;
-}
+            const existing = globalPlanes[actualCallsign];
+            const flid = (existing && existing.flid) ? existing.flid : Math.floor(Math.random() * 899 + 100).toString();
+            
+            // PRESERVE HANDOFF TARGET DURING RE-POLL
+            const currentHandoff = (existing && existing.handoffTarget) ? existing.handoffTarget : null;
 
-    // PERSISTENT RANDOM FLID (3-digit)
-    const existing = globalPlanes[actualCallsign];
-    const flid = (existing && existing.flid) ? existing.flid : Math.floor(Math.random() * 899 + 100).toString();
+            const squawk = (existing && existing.flightPlan && existing.flightPlan.squawk) 
+                ? existing.flightPlan.squawk 
+                : generateOctalSquawk();
 
-    // PERSISTENT OCTAL SQUAWK (4-digit, 0-7, avoids restricted)
-    const squawk = (existing && existing.flightPlan && existing.flightPlan.squawk) 
-        ? existing.flightPlan.squawk 
-        : generateOctalSquawk();
-
-    globalPlanes[actualCallsign] = {
-        ...raw,
-        callsign: actualCallsign,
-        playerName: pilot,
-        position: {
-            x: Number(raw.position.x),
-            y: Number(raw.position.y)
-        },
-        altitude: Number(raw.altitude || 0),
-        groundSpeed: Number(raw.groundSpeed || 0),
-        heading: Number(raw.heading || 0),
-        lastUpdate: Date.now(),
-        isCoasting: false,
-        flid: flid,
-
-        flightPlan: foundFpl ? {
-            ...foundFpl,
-            dest: foundFpl.arriving,
-            dep: foundFpl.departing,
-            type: foundFpl.aircraft,
-            level: foundFpl.flightlevel,
-            squawk: squawk // Use the octal squawk here
-        } : { 
-            dest: "VFR", 
-            squawk: squawk // Even VFR gets the randomized octal
+            globalPlanes[actualCallsign] = {
+                ...raw,
+                callsign: actualCallsign,
+                playerName: pilot,
+                position: { x: Number(raw.position.x), y: Number(raw.position.y) },
+                altitude: Number(raw.altitude || 0),
+                groundSpeed: Number(raw.groundSpeed || 0),
+                heading: Number(raw.heading || 0),
+                lastUpdate: Date.now(),
+                isCoasting: false,
+                flid: flid,
+                handoffTarget: currentHandoff, // Keep handoff status alive
+                flightPlan: foundFpl ? {
+                    ...foundFpl,
+                    dest: foundFpl.arriving,
+                    dep: foundFpl.departing,
+                    type: foundFpl.aircraft,
+                    level: foundFpl.flightlevel,
+                    squawk: squawk 
+                } : { dest: "VFR", squawk: squawk }
+            };
         }
-    };
-}
-
-        
         io.emit('radarUpdate', globalPlanes);
-        
-        // --- ADDED THIS FOR YOU TO VERIFY IN TERMINAL ---
-        const count = Object.keys(globalPlanes).length;
-        if(count > 0) {
-            const first = Object.keys(globalPlanes)[0];
-            console.log(`Tracking ${count} acft. Example [${first}]: X:${globalPlanes[first].position.x} Y:${globalPlanes[first].position.y}`);
-        }
-
-    } catch (e) {
-        // Silent catch
-    }
+    } catch (e) { /* Silent catch */ }
 }, 1000);
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`ERAM Engine active on port ${PORT}`));

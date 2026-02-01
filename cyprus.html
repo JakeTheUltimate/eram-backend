@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PTFS ERAM Radar</title>
+    <link href="https://fonts.googleapis.com/css2?family=Intel+One+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            background: #000; color: #CCCC00; font-family: 'Consolas', monospace; 
+            margin: 0; display: flex; flex-direction: column; 
+            height: 100vh; width: 100vw; overflow: hidden;
+        }
+        #toolbar { 
+            background: black; height: 45px; display: flex; align-items: center; 
+            gap: 5px; padding: 0 10px; border-bottom: 1px solid #444; flex-shrink: 0; 
+        }
+        .btn { 
+            background: black; color: #fff; border: 1px solid #666; 
+            padding: 6px 12px; font-size: 11px; cursor: pointer; text-transform: uppercase;
+        }
+        .btn.active { background: #bbb; color: black; border: 1px solid #fff; }
+        .btn-back { border-color: #ff4444 !important; color: #ff4444 !important; }
+
+        #radar-container { flex-grow: 1; position: relative; background: #000022; overflow: hidden; cursor: none; }
+        canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+        #radar { pointer-events: auto; }
+        
+        .row1, .tab-row, .views-row { 
+        display: flex; 
+        flex-direction: row; 
+        border-bottom: 1px solid #000; 
+        }
+        #toolbar-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background: #444;
+        font-family: 'monospace';
+        font-weight: bold;
+        user-select: none;
+        z-index: 1000;
+        padding-bottom: 10px;
+        }
+        #row1, #row2 {
+        display: flex;
+        height: 45px;
+        border-bottom: 1px solid #444;
+        }
+        #row3 {
+        display: none; /* This is the key: it removes it from the layout */
+        background: #000;
+        height: 45px;
+        width: 100%;
+        border-bottom: 1px solid #444;
+        flex-direction: row;
+        align-items: center;
+        }
+        .toolbar-row { display: flex; border-bottom: 1px solid #000; }
+        /* Color Palette */
+        .blue { background: #003399; color: white; }
+        .black { background: #000; color: white; }
+        .green { background: #009933; color: white; }
+        .peach { background: #ff9966; color: black; }
+        .cyan { background: #00cccc; color: black; flex-grow: 1; }
+        .tan { background: #ffffcc; color: black; }
+        .grey { background: #999; color: black; }
+        .active { outline: 2px solid yellow; z-index: 2; }
+
+        #row1-content, 
+        #row2-content{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: stretch;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            left: 85px;
+            top: 90px;
+            background: #00cccc;
+            border: 2px solid gold;
+            width: 120px;
+        }
+        .drop-item {
+            padding: 4px;
+            border-bottom: 1px solid black;
+            color: black;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .drop-item:hover { background: #00aaaa; }
+        .drop-item.active { background: #ffff00; }
+
+        #command-line { background: black; color: white; padding: 10px; border-top: 1px solid #333; font-size: 18px; flex-shrink: 0; }
+        input { background: transparent; border: none; color: white; outline: none; width: 90%; font-family: inherit; }
+        #mca {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 20vw; /* Increased from 12.5vw */
+            height: 22vh; 
+            background: black;
+            border: 1.5px solid #555;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+
+        #mca-command {
+            height: 25%;
+            border-bottom: 1.5px solid #555;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            color: #fff;
+            font-size: 20px;
+        }
+
+        #mca-input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            outline: none;
+            width: 100%;
+            font-family: 'intel-one-mono', Verdana;
+            text-transform: uppercase;
+            font-size: 24px;
+        }
+
+        #mca-feedback {
+            height: 75%;
+            padding: 8px 10px;
+            color: #fff; /* Static text is now White */
+            font-size: 24px; /* Bigger text */
+            font-weight: bold;
+            pointer-events: none;
+            line-height: 1.3;
+            font-family: 'intel-one-mono', Verdana;
+            margin-top: 5px;
+            min-height: 40px;
+        }
+        #mca-container {
+            padding: 10px;
+            background: #000;
+        }
+        .row1-style { background: #000;}
+        .row1-empty { background: #666 !important; } 
+
+        .tool-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+        border-right: 1px solid #666;
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+        min-width: 90px;
+        height: 100%;
+        white-space: nowrap;
+        }
+        .workspace-row {
+        background: #444;
+        height: 45px;
+        display: flex;
+        align-items: center;
+        }
+
+        .menu-content {
+        flex-grow: 1;
+        padding-left: 20px;
+        color: white;
+        font-size: 14px;
+        }
+        .toolbar-row { display: flex; height: 45px; border-bottom: 1px solid #666; background: #666; flex-direction: row;}
+        .gray-out { background: #666 !important; }
+
+/* The button moved to the top left should stand out */
+        .active-mode {
+        background: #666 !important;
+        color: #fff !important;
+        border: 2px solid yellow !important;
+        }
+
+        #row1-active-slot, #row2-active-slot {
+        display: flex;
+        flex-direction: row;
+        }
+        #row3 {
+        display: none; /* This is the key: it removes it from the layout */
+        background: #666;
+        height: 45px;
+        width: 100%;
+        border-bottom: 1px solid #444;
+        flex-direction: row;
+        align-items: center;
+        }
+        /* 1. When Row 1 is active: Hide Row 1 neighbors, Gray out Row 2, Kill Row 3 */
+        #toolbar-container.r1-active #row1-content { display: none !important; }
+        #toolbar-container.r1-active #row2 { background: #666 !important; }
+        #toolbar-container.r1-active #row2-content { visibility: hidden !important; }
+        #toolbar-container.r1-active #row3 { display: none !important; }
+
+/* 2. When Row 2 is active: Hide Row 2 neighbors, Gray out Row 1, Show Row 3 */
+        #toolbar-container.r2-active #row2-content { display: none !important; }
+        #toolbar-container.r2-active #row1 { background: #666 !important; }
+        #toolbar-container.r2-active #row1-content { visibility: hidden !important; }
+        #toolbar-container.r2-active #row3 { display: flex !important; background: #666; }
+
+/* Ensure active slots are always visible regardless of state */
+        #row1-active-slot, #row2-active-slot { display: flex !important; }
+        #row3-content .tool-btn {
+        height: 45px; /* Force height to match the bar */
+        line-height: 45px; /* Center text vertically if needed */
+        box-sizing: border-box;
+        border-bottom: none; /* Keep it clean */
+        }
+        .menu-group .tool-btn {
+            width: 90px;
+            height: 45px;
+            border-right: 1px solid #666;
+        }
+        /* When Row 2 is active: Hide Row 2 neighbors, Show Row 3 */
+        #toolbar-container.r2-active #row2-content { display: none !important; }
+
+        /* Critical: This forces Row 3 to show when a Row 2 button is hooked */
+        #toolbar-container.r2-active #row3 { 
+            display: flex !important; 
+            background: #666; /* Match the radar/ERAM black background */
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+<div id="toolbar-container">
+    <div id="row1" class="toolbar-row">
+        <div id="row1-active-slot"></div> <div id="row1-content">
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'draw')">DRAW</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'atc')">ATC<br>TOOLS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'ab')">AB<br>SETTINGS</div>
+            <div class="tool-btn black">RANGE<br>175</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'cursor')">CURSOR</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'bright')">BRIGHT</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'font')">FONT</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'db')">DB<br>FIELDS</div>
+            <div class="tool-btn green">VECTOR<br>0</div>
+        </div>
+    </div>
+
+    <div id="row2" class="toolbar-row">
+    <div id="row2-active-slot"></div> 
+    
+    <div id="row2-menus">
+        <div id="zrf-menu" class="menu-group" style="display: none; flex-direction: row;">
+            <div class="tool-btn blue" onclick="toggleMap('base', this)">MAP</div>
+            <div class="tool-btn blue" onclick="toggleMap('bound', this)">BOUND</div>
+            <div class="tool-btn blue" onclick="toggleMap('fac7', this)">EAST<br>FAC</div>
+            <div class="tool-btn blue" onclick="toggleMap('fac25', this)">WEST<br>FAC</div>
+            <div class="tool-btn blue" onclick="toggleMap('msa', this)">MSA</div>
+            <div class="tool-btn blue" onclick="toggleMap('ofac', this)">OTHER<br>FAC</div>
+            <div class="tool-btn blue" onclick="toggleMap('arpt', this)">ARPT</div>
+        </div>
+        </div>
+
+        <div id="row2-content">
+            <div class="tool-btn peach" onclick="handleTrigger(this, 2, 'views')">VIEWS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'check')">CHECK<br>LISTS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'cmd')">COMMAND<br>MENUS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'zrf')">ZCY</div>
+            <div class="tool-btn black">ALT LIM<br>000B000</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'filter')">RADAR<br>FILTER</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'pref')">PREFSET</div>
+            <div class="tool-btn cyan">DELETE<br>TEAROFF</div>
+        </div>
+    </div>
+
+    <div id="row3" class="toolbar-row">
+    </div>
+        
+        <div id="menu-draw" class="menu-content" style="display:none;"></div>
+        <div id="menu-atc" class="menu-content" style="display:none;"></div>
+        <div id="menu-ab" class="menu-content" style="display:none;"></div>
+        <div id="menu-cursor" class="menu-content" style="display:none;"></div>
+        <div id="menu-bright" class="menu-content" style="display:none;"></div>
+        <div id="menu-font" class="menu-content" style="display:none;"></div>
+        <div id="menu-db" class="menu-content" style="display:none;"></div>
+        <div id="menu-check" class="menu-content" style="display:none;"></div>
+        <div id="menu-cmd" class="menu-content" style="display:none;"></div>
+        <div id="menu-zrf" class="menu-content" style="display:none;"></div>
+        <div id="menu-filter" class="menu-content" style="display:none;"></div>
+        <div id="menu-pref" class="menu-content" style="display:none;"></div>
+    </div>
+</div>
+
+<div id="radar-container">
+    <canvas id="map-layer"></canvas>
+    <canvas id="bound-layer"></canvas>
+    <canvas id="fac7-layer"></canvas>
+    <canvas id="fac25-layer"></canvas>
+    <canvas id="msa-layer"></canvas>
+    <canvas id="ofac-layer"></canvas>
+    <canvas id="arpt"></canvas>
+    <canvas id="radar"></canvas>
+</div>
+
+<div id="mca">
+    <div id="mca-command">
+        &gt;&nbsp;<input type="text" id="mca-input" autofocus autocomplete="off">
+    </div>
+    <div id="mca-feedback">
+        ERAM READY
+    </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    let aircraft = {}, controlledAircraft = new Set();
+    let offset = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    let zoom = 0.012, mapScale = 6.65, mapOffsetX = -1020, mapOffsetY = 200;
+    let mousePos = { x: 0, y: 0 }, isDragging = false, lastPos = { x: 0, y: 0 };
+
+    let persistentAlts = {};
+    let localBlacklist = new Set(); 
+    window.persistentFields = {}; 
+
+    const layers = {
+        base: { img: new Image(), src: '/videomaps/iccc/island.png', id: 'map-layer', visible: false, alpha: 0.2 },
+        bound: { img: new Image(), src: '/videomaps/iccc/airspace.png', id: 'bound-layer', visible: false, alpha: 0.8 },
+        fac7: { img: new Image(), src: '/videomaps/iccc/efac.png', id: 'fac7-layer', visible: false, alpha: 0.8 },
+        fac25: { img: new Image(), src: '/videomaps/iccc/wfac.png', id: 'fac25-layer', visible: false, alpha: 0.8 },
+        msa: { img: new Image(), src: '/videomaps/iccc/msa.png', id: 'msa-layer', visible: false, alpha: 0.8 },
+        ofac: { img: new Image(), src: '/videomaps/iccc/ofac.png', id: 'ofac-layer', visible: false, alpha: 0.8 },
+        arpt: { img: new Image(), src: '/videomaps/iccc/airports.png', id: 'arpt', visible: false, alpha: 0.8}
+    };
+
+    const radarCanvas = document.getElementById('radar');
+    const ctx = radarCanvas.getContext('2d');
+    const container = document.getElementById('radar-container');
+    const mcaInput = document.getElementById('mca-input');
+    const mcaFeedback = document.getElementById('mca-feedback');
+
+    const socket = io("http://localhost:3000")
+
+    socket.on('connect', () => { mcaFeedback.innerText = "ERAM CONNECTED"; });
+
+    socket.on('radarUpdate', data => { 
+        let filteredData = {};
+        for (let call in data) {
+            let ac = data[call];
+            if (localBlacklist.has(ac.flid)) continue;
+            if (persistentAlts[ac.flid]) {
+                if (!ac.flightPlan) ac.flightPlan = {};
+                ac.flightPlan.altitude = persistentAlts[ac.flid];
+            }
+            if (window.persistentFields[ac.flid]) {
+                if (!ac.flightPlan) ac.flightPlan = {};
+                Object.assign(ac.flightPlan, window.persistentFields[ac.flid]);
+            }
+            filteredData[call] = ac;
+        }
+        aircraft = filteredData; 
+    });
+
+    window.onload = () => {
+        for (let key in layers) {
+            layers[key].img.src = layers[key].src;
+            layers[key].img.onload = () => drawAllMaps();
+        }
+        setupInteractions();
+        resize();
+        drawLoop();
+        mcaInput.focus();
+    };
+
+    // Main MCA Command Listener
+    mcaInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const cmdStr = mcaInput.value.trim().toUpperCase();
+            mcaInput.value = '';
+            if (!cmdStr) return;
+            const p = cmdStr.split(' ');
+            const cmd = p[0];
+
+            // 1. HANDOFF LOGIC: Sector Number (1-8) + FLID
+            if (cmd.length === 1 && "12345678".includes(cmd)) {
+                const target = cmd;
+                const flid = p[1];
+                const ac = findByFlid(flid);
+                if (ac) {
+                    socket.emit('initiateHandoff', { callsign: ac.callsign, targetSector: target });
+                    setFeedback([`✅ HANDOFF: ${ac.callsign}`, `TO SECTOR ${target}`]);
+                }
+                return;
+            }
+
+            // 2. ACCEPT LOGIC: Just typing the 3-digit FLID
+            if (cmd.length === 3 && !isNaN(cmd)) {
+                const ac = findByFlid(cmd);
+                if (ac && ac.handoffTarget) {
+                    socket.emit('acceptHandoff', { callsign: ac.callsign });
+                    setFeedback([`✅ ${ac.callsign} ACCEPTED`]);
+                }
+                return;
+            }
+
+            // Standard Commands
+            if (cmd === 'AM') {
+                const type = p[1], flid = p[2], val = p.slice(3).join(' '), ac = findByFlid(flid);
+                if (!ac) return;
+                let field = type === '1' ? 'callsign' : type === '2' ? 'arriving' : 'route';
+                if (!window.persistentFields[flid]) window.persistentFields[flid] = {};
+                window.persistentFields[flid][field] = val;
+                socket.emit('updateFPLField', { flid, field, value: val });
+                setFeedback(["✅ ACCEPT", `${flid} AMENDED`]);
+            }
+            else if (cmd === 'QF') {
+                const flid = p[1], ac = findByFlid(flid);
+                if (!ac || !ac.flightPlan) { setFeedback(["❌ DECLINE", "NO FPL"]); return; }
+                const f = ac.flightPlan;
+                const squawk = f.squawk || generateSquawk();
+                if (!f.squawk) f.squawk = squawk; 
+                setFeedback([
+                    `✅ ACCEPT FPL ${flid}`, 
+                    `SQ ${squawk} | ALT ${f.altitude || "000"}`, 
+                    `${flid} ${f.callsign || "UNK"} ${f.aircraft || "UNK"}`, 
+                    `${f.departing || "ZZZZ"} . ${f.route || "DIRECT"} . ${f.arriving || "ZZZZ"}`
+                ]);
+            }
+            else if (cmd === 'QZ') {
+                const flid = p[1], alt = p[2], ac = findByFlid(flid);
+                if (!ac) return;
+                persistentAlts[flid] = alt; 
+                socket.emit('updateAssignedAlt', { flid, newAlt: alt });
+                setFeedback([`✅ ACCEPT ${flid}`, `NEW ALT ${alt}`]);
+            }
+            else if (cmd === 'QD') {
+                const flid = p[1], ac = findByFlid(flid);
+                if (!ac) return;
+                localBlacklist.add(flid); 
+                socket.emit('deleteAircraft', { flid });
+                setFeedback(["✅ ACCEPT", `${flid} DELETED`]);
+            }
+            else if (cmd === 'QU') {
+                const flid = p[1];
+                localBlacklist.delete(flid);
+                socket.emit('restoreAircraft', { flid });
+                setFeedback(["✅ ACCEPT", `${flid} RESTORED`]);
+            }
+        }
+    });
+
+    window.addEventListener('keydown', () => {
+        if (document.activeElement !== mcaInput) mcaInput.focus();
+    });
+
+    function findByFlid(flid) { return Object.values(aircraft).find(a => a.flid === flid); }
+    function setFeedback(lines) { mcaFeedback.innerHTML = lines.join('<br>'); }
+
+    let activeButton = null;
+    let originalParent = null;
+    let originalSibling = null;
+
+    function handleTrigger(btn, rowNum, menuId) {
+        const container = document.getElementById('toolbar-container');
+        if (activeButton === btn) { resetToolbar(); return; }
+        if (activeButton) resetToolbar();
+        activeButton = btn;
+        originalParent = btn.parentNode;
+        originalSibling = btn.nextSibling;
+        document.getElementById(`row${rowNum}-active-slot`).appendChild(btn);
+        container.classList.add(`r${rowNum}-active`);
+        const menu = document.getElementById(`${menuId}-menu`);
+        if (menu) menu.style.display = 'flex';
+    }
+
+    function resetToolbar() {
+        if (!activeButton) return;
+        const container = document.getElementById('toolbar-container');
+        document.querySelectorAll('.menu-group').forEach(m => m.style.display = 'none');
+        originalParent.insertBefore(activeButton, originalSibling);
+        container.classList.remove('r1-active', 'r2-active');
+        activeButton = null;
+    }
+
+    function toggleMapMenu() {
+        const dropdown = document.getElementById('map-dropdown');
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function toggleMap(id, btnElement) {
+        if (!layers[id]) return;
+        layers[id].visible = !layers[id].visible;
+        if (btnElement) btnElement.classList.toggle('active');
+        drawAllMaps();
+    }
+
+    function generateSquawk() {
+        let code = "";
+        const firstDigit = Math.floor(Math.random() * 4) + 2; 
+        code += firstDigit;
+        for (let i = 0; i < 3; i++) { code += Math.floor(Math.random() * 8); }
+        const restricted = ["1200", "7500", "7600", "7700", "0000"];
+        return restricted.includes(code) ? generateSquawk() : code;
+    }
+
+    function drawLoop() {
+        ctx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+        Object.keys(aircraft).forEach(call => {
+            const a = aircraft[call];
+            if (!a.position || a.isOnGround) return;
+            const x = Math.round(a.position.x * zoom + offset.x);
+            const y = Math.round(a.position.y * zoom + offset.y);
+            const isHooked = controlledAircraft.has(call);
+
+            let tagColor = a.isCoasting ? '#ffffff' : '#ffff00';
+            ctx.fillStyle = ctx.strokeStyle = tagColor;
+            ctx.font = "bold 16px monospace";
+
+            if (isHooked) { 
+                ctx.fillRect(x - 2, y - 2, 4, 4); 
+            } else { 
+                ctx.beginPath(); ctx.moveTo(x-4, y+4); ctx.lineTo(x+4, y-4); ctx.stroke(); 
+            }
+
+            // Handoff Text Logic
+            let callsign = a.flightPlan?.callsign || a.playerName || "UNK";
+
+            if (a.handoffTarget) {
+                // Blinks every 500ms (1000ms total cycle)
+                if (Math.floor(Date.now() / 500) % 2 === 0) {
+                    callsign += ` H-${a.handoffTarget}`;
+                } else {
+                    // Keeps the spacing so the tag doesn't "jitter" or bounce
+                    callsign += `    `; 
+                }
+            }
+
+            let currentAltStr = Math.round(a.altitude / 100).toString().padStart(3, '0');
+            const tx = x + 12, ty = y - 5;
+
+            if (isHooked) {
+                let assignedAlt = parseInt(a.flightPlan?.altitude || "000");
+                let curAltInt = Math.round(a.altitude / 100);
+                let indicator = " ";
+                if (Math.abs(curAltInt - assignedAlt) <= 3) indicator = "C";
+                else if (assignedAlt > curAltInt) indicator = "↑";
+                else if (assignedAlt < curAltInt) indicator = "↓";
+
+                let dispAssigned = assignedAlt.toString().padStart(3, '0');
+                let gs = Math.round((a.groundSpeed || 0) * 2).toString().padStart(3, '0');
+                let flid = a.flid || "000";
+                let dest = a.flightPlan?.arriving || "---";
+
+                ctx.fillText(a.isCoasting ? callsign + " CST" : callsign, tx, ty - 20);
+                ctx.fillText(`${dispAssigned}${indicator}${currentAltStr}`, tx, ty - 5);
+                ctx.fillText(`${flid} ${gs}`, tx, ty + 10);
+                ctx.fillText(dest, tx, ty + 25);
+            } else {
+                ctx.fillText(callsign, tx, ty - 5);
+                ctx.fillText(currentAltStr, tx, ty + 10);
+            }
+
+            if (a.groundSpeed > 5 && a.heading !== undefined) {
+                const vectorLength = (a.groundSpeed * 0.5) * zoom;
+                const angleRad = (a.heading - 90) * (Math.PI / 180);
+                const vx = x + Math.cos(angleRad) * vectorLength;
+                const vy = y + Math.sin(angleRad) * vectorLength;
+                ctx.beginPath(); ctx.setLineDash([2, 2]); ctx.moveTo(x, y); ctx.lineTo(vx, vy); ctx.stroke(); ctx.setLineDash([]);
+            }
+        });
+
+        // Cursor
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.beginPath();
+        ctx.moveTo(mousePos.x, mousePos.y - 10); ctx.lineTo(mousePos.x, mousePos.y + 10);
+        ctx.moveTo(mousePos.x - 10, mousePos.y); ctx.lineTo(mousePos.x + 10, mousePos.y);
+        ctx.stroke();
+
+        requestAnimationFrame(drawLoop);
+    }
+
+    function drawAllMaps() {
+        for (let key in layers) {
+            const l = layers[key];
+            const layerCanvas = document.getElementById(l.id);
+            if (!layerCanvas) continue;
+            const mCtx = layerCanvas.getContext('2d');
+            mCtx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+            if (!l.visible || !l.img.complete) continue;
+            const imgW = Math.round(l.img.width * zoom * mapScale);
+            const imgH = Math.round(l.img.height * zoom * mapScale);
+            const mapX = Math.round(offset.x + (mapOffsetX * zoom) - (imgW / 2));
+            const mapY = Math.round(offset.y + (mapOffsetY * zoom) - (imgH / 2));
+            mCtx.globalAlpha = l.alpha;
+            mCtx.drawImage(l.img, mapX, mapY, imgW, imgH);
+        }
+    }
+
+    function setupInteractions() {
+        window.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.1 : 0.9;
+            const wx = (mousePos.x - offset.x) / zoom;
+            const wy = (mousePos.y - offset.y) / zoom;
+            zoom *= factor;
+            offset.x = mousePos.x - wx * zoom;
+            offset.y = mousePos.y - wy * zoom;
+            drawAllMaps();
+        }, { passive: false });
+
+        window.onmousemove = (e) => {
+            const rect = radarCanvas.getBoundingClientRect();
+            mousePos.x = e.clientX - rect.left;
+            mousePos.y = e.clientY - rect.top;
+            if (isDragging) {
+                offset.x += e.clientX - lastPos.x;
+                offset.y += e.clientY - lastPos.y;
+                lastPos = { x: e.clientX, y: e.clientY };
+                drawAllMaps();
+            }
+        };
+
+        radarCanvas.onmousedown = (e) => {
+            e.preventDefault();
+            if (e.button === 1) { // Middle Click
+                for (let call in aircraft) {
+                    const a = aircraft[call];
+                    const x = a.position.x * zoom + offset.x;
+                    const y = a.position.y * zoom + offset.y;
+                    if (Math.hypot(mousePos.x - x, mousePos.y - y) < 20) {
+                        // Accept Handoff on Middle Click if tag is present
+                        if (a.handoffTarget) {
+                            socket.emit('acceptHandoff', { callsign: a.callsign });
+                        } else {
+                            if (controlledAircraft.has(call)) controlledAircraft.delete(call);
+                            else controlledAircraft.add(call);
+                        }
+                        break;
+                    }
+                }
+            } else { isDragging = true; lastPos = { x: e.clientX, y: e.clientY }; }
+        };
+        window.onmouseup = () => isDragging = false;
+        radarCanvas.onclick = () => mcaInput.focus();
+    }
+
+    function resize() {
+        document.querySelectorAll('canvas').forEach(c => {
+            c.width = container.clientWidth; c.height = container.clientHeight;
+        });
+        drawAllMaps();
+    }
+    window.onresize = resize;
+</script>
+</body>
+
+</html>
