@@ -111,59 +111,54 @@ setInterval(async () => {
         const acftData = acftRes.data; 
         const allFpls = fplsRes.data;
 
-        for (const key in acftData) {
-            const raw = acftData[key];
-            if (!raw || !raw.position) continue;
+        // Inside your setInterval(async () => { ... }, 1000)
 
-            const pilot = raw.playerName;
-            const actualCallsign = raw.callsign || key;
-            
-            let foundFpl = null;
-            if (Array.isArray(allFpls)) {
-                foundFpl = allFpls.find(f => f.robloxName === pilot || f.callsign === actualCallsign);
-            }
+for (const key in acftData) {
+    const raw = acftData[key];
+    if (!raw || !raw.position) continue;
 
-            function generateOctalSquawk() {
-                const forbidden = ['1200', '7500', '7600', '7700'];
-                let squawk;
-                do {
-                    squawk = Array.from({ length: 4 }, () => Math.floor(Math.random() * 8)).join('');
-                } while (forbidden.includes(squawk));
-                return squawk;
-            }
+    const pilot = raw.playerName; // This is the Roblox Username
+    const actualCallsign = raw.callsign || key;
+    
+    let foundFpl = null;
+    if (Array.isArray(allFpls)) {
+        // Look for the FPL by Roblox Username first, then callsign
+        foundFpl = allFpls.find(f => f.robloxName === pilot || f.callsign === actualCallsign);
+    }
 
-            const existing = globalPlanes[actualCallsign];
-            const flid = (existing && existing.flid) ? existing.flid : Math.floor(Math.random() * 899 + 100).toString();
-            
-            // PRESERVE HANDOFF TARGET DURING RE-POLL
-            const currentHandoff = (existing && existing.handoffTarget) ? existing.handoffTarget : null;
+    const existing = globalPlanes[actualCallsign];
+    
+    // Keep the FLID consistent so it doesn't change every second
+    const flid = (existing && existing.flid) ? existing.flid : Math.floor(Math.random() * 899 + 100).toString();
+    
+    // Keep the same squawk unless it's a brand new FPL
+    const squawk = (existing && existing.flightPlan && existing.flightPlan.squawk) 
+        ? existing.flightPlan.squawk 
+        : generateOctalSquawk();
 
-            const squawk = (existing && existing.flightPlan && existing.flightPlan.squawk) 
-                ? existing.flightPlan.squawk 
-                : generateOctalSquawk();
-
-            globalPlanes[actualCallsign] = {
-                ...raw,
-                callsign: actualCallsign,
-                playerName: pilot,
-                position: { x: Number(raw.position.x), y: Number(raw.position.y) },
-                altitude: Number(raw.altitude || 0),
-                groundSpeed: Number(raw.groundSpeed || 0),
-                heading: Number(raw.heading || 0),
-                lastUpdate: Date.now(),
-                isCoasting: false,
-                flid: flid,
-                handoffTarget: currentHandoff, // Keep handoff status alive
-                flightPlan: foundFpl ? {
-                    ...foundFpl,
-                    dest: foundFpl.arriving,
-                    dep: foundFpl.departing,
-                    type: foundFpl.aircraft,
-                    level: foundFpl.flightlevel,
-                    squawk: squawk 
-                } : { dest: "VFR", squawk: squawk }
-            };
-        }
+    // UPDATE: Always overwrite flightPlan with foundFpl to ensure it's not out of date
+    globalPlanes[actualCallsign] = {
+        ...raw,
+        callsign: actualCallsign,
+        playerName: pilot,
+        position: { x: Number(raw.position.x), y: Number(raw.position.y) },
+        altitude: Number(raw.altitude || 0),
+        groundSpeed: Number(raw.groundSpeed || 0),
+        heading: Number(raw.heading || 0),
+        lastUpdate: Date.now(),
+        isCoasting: false,
+        flid: flid,
+        handoffTarget: (existing && existing.handoffTarget) ? existing.handoffTarget : null,
+        flightPlan: foundFpl ? {
+            ...foundFpl, // This spreads the NEWEST data from the API
+            dest: foundFpl.arriving,
+            dep: foundFpl.departing,
+            type: foundFpl.aircraft,
+            level: foundFpl.flightlevel,
+            squawk: squawk 
+        } : { dest: "VFR", squawk: squawk }
+    };
+}
         io.emit('radarUpdate', globalPlanes);
     } catch (e) { /* Silent catch */ }
 }, 1000);
