@@ -101,66 +101,78 @@ setInterval(() => {
 }, 2000);
 
 // --- BULLETPROOF POLLING LOGIC ---
+// --- BULLETPROOF POLLING LOGIC (FIXED) ---
 setInterval(async () => {
     try {
         const [acftRes, fplsRes] = await Promise.all([
-            axios.get(`${RELAY_BASE_URL}/acft-data`),
-            axios.get(`${RELAY_BASE_URL}/fpls`)
+            axios.get(`${RELAY_BASE_URL}/acft-data`).catch(() => ({ data: {} })),
+            axios.get(`${RELAY_BASE_URL}/fpls`).catch(() => ({ data: [] }))
         ]);
 
-        const acftData = acftRes.data; 
-        const allFpls = fplsRes.data;
+        const acftData = acftRes.data || {}; 
+        const allFpls = Array.isArray(fplsRes.data) ? fplsRes.data : [];
 
-        // Inside your setInterval(async () => { ... }, 1000)
+        // If no aircraft data, don't clear the screen yet, just wait for next tick
+        if (Object.keys(acftData).length === 0) return;
 
-for (const key in acftData) {
-    const raw = acftData[key];
-    if (!raw || !raw.position) continue;
+        for (const key in acftData) {
+            const raw = acftData[key];
+            if (!raw || !raw.position) continue;
 
-    const pilot = raw.playerName; // This is the Roblox Username
-    const actualCallsign = raw.callsign || key;
-    
-    let foundFpl = null;
-    if (Array.isArray(allFpls)) {
-        // Look for the FPL by Roblox Username first, then callsign
-        foundFpl = allFpls.find(f => f.robloxName === pilot || f.callsign === actualCallsign);
-    }
+            const pilot = raw.playerName || "Unknown";
+            const actualCallsign = raw.callsign || key;
+            
+            // Correlation Logic: Look for the newest FPL by Roblox Name
+            let foundFpl = allFpls.find(f => f.robloxName === pilot || f.callsign === actualCallsign);
 
-    const existing = globalPlanes[actualCallsign];
-    
-    // Keep the FLID consistent so it doesn't change every second
-    const flid = (existing && existing.flid) ? existing.flid : Math.floor(Math.random() * 899 + 100).toString();
-    
-    // Keep the same squawk unless it's a brand new FPL
-    const squawk = (existing && existing.flightPlan && existing.flightPlan.squawk) 
-        ? existing.flightPlan.squawk 
-        : generateOctalSquawk();
+            const existing = globalPlanes[actualCallsign];
+            const flid = (existing && existing.flid) ? existing.flid : Math.floor(Math.random() * 899 + 100).toString();
+            const handoff = (existing && existing.handoffTarget) ? existing.handoffTarget : null;
 
-    // UPDATE: Always overwrite flightPlan with foundFpl to ensure it's not out of date
-    globalPlanes[actualCallsign] = {
-        ...raw,
-        callsign: actualCallsign,
-        playerName: pilot,
-        position: { x: Number(raw.position.x), y: Number(raw.position.y) },
-        altitude: Number(raw.altitude || 0),
-        groundSpeed: Number(raw.groundSpeed || 0),
-        heading: Number(raw.heading || 0),
-        lastUpdate: Date.now(),
-        isCoasting: false,
-        flid: flid,
-        handoffTarget: (existing && existing.handoffTarget) ? existing.handoffTarget : null,
-        flightPlan: foundFpl ? {
-            ...foundFpl, // This spreads the NEWEST data from the API
-            dest: foundFpl.arriving,
-            dep: foundFpl.departing,
-            type: foundFpl.aircraft,
-            level: foundFpl.flightlevel,
-            squawk: squawk 
-        } : { dest: "VFR", squawk: squawk }
-    };
-}
+            // Generate Squawk helper inside scope
+            function generateOctalSquawk() {
+                const forbidden = ['1200', '7500', '7600', '7700'];
+                let sq;
+                do {
+                    sq = Array.from({ length: 4 }, () => Math.floor(Math.random() * 8)).join('');
+                } while (forbidden.includes(sq));
+                return sq;
+            }
+
+            const squawk = (existing && existing.flightPlan && existing.flightPlan.squawk) 
+                ? existing.flightPlan.squawk 
+                : generateOctalSquawk();
+
+            // Reconstruct the plane object
+            globalPlanes[actualCallsign] = {
+                ...raw,
+                callsign: actualCallsign,
+                playerName: pilot,
+                position: { 
+                    x: raw.position.x !== undefined ? Number(raw.position.x) : 0, 
+                    y: raw.position.y !== undefined ? Number(raw.position.y) : 0 
+                },
+                altitude: Number(raw.altitude || 0),
+                groundSpeed: Number(raw.groundSpeed || 0),
+                heading: Number(raw.heading || 0),
+                lastUpdate: Date.now(),
+                isCoasting: false,
+                flid: flid,
+                handoffTarget: handoff,
+                flightPlan: foundFpl ? {
+                    ...foundFpl,
+                    dest: foundFpl.arriving || "UNK",
+                    dep: foundFpl.departing || "UNK",
+                    type: foundFpl.aircraft || "UNK",
+                    level: foundFpl.flightlevel || "000",
+                    squawk: squawk 
+                } : { dest: "VFR", squawk: squawk }
+            };
+        }
         io.emit('radarUpdate', globalPlanes);
-    } catch (e) { /* Silent catch */ }
+    } catch (e) {
+        console.error("Critical Poller Error:", e.message);
+    }
 }, 1000);
 
 const PORT = process.env.PORT || 3000;
