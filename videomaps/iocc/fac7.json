@@ -1,0 +1,10 @@
+{
+  "name": "ISLAND_BOUND",
+  "color": "#667",
+  "segments": [
+    {
+      "points": [{"x":-7312,"y":-31923},{"x":-3971,"y":-29321}],
+      "dashed": true 
+    }
+  ]
+}

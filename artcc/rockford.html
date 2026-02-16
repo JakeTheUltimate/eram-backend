@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PTFS ERAM Radar</title>
+    <link href="https://fonts.googleapis.com/css2?family=Intel+One+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="/./style.css" rel="stylesheet">
+</head>
+<body oncontextmenu="return false;">
+
+<div id="toolbar-container">
+    <div id="row1" class="toolbar-row">
+        <div id="row1-active-slot"></div> <div id="row1-content">
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'draw')">DRAW</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'atc')">ATC<br>TOOLS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'ab')">AB<br>SETTINGS</div>
+            <div class="tool-btn black">RANGE<br>175</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'cursor')">CURSOR</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'bright')">BRIGHT</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'font')">FONT</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 1, 'db')">DB<br>FIELDS</div>
+            <div class="tool-btn green">VECTOR<br>0</div>
+        </div>
+    </div>
+
+    <div id="row2" class="toolbar-row">
+    <div id="row2-active-slot"></div> 
+    
+    <div id="row2-menus">
+        <div id="zrf-menu" class="menu-group" style="display: none; flex-direction: row;">
+            <div class="tool-btn blue" onclick="toggleMap('base', this)">MAP</div>
+            <div class="tool-btn blue" onclick="toggleMap('bound', this)">BOUND</div>
+            <div class="tool-btn blue" onclick="toggleMap('fac7', this)">FAC 7</div>
+            <div class="tool-btn blue" onclick="toggleMap('fac25', this)">FAC 25</div>
+            <div class="tool-btn blue" onclick="toggleMap('msa', this)">MSA</div>
+            <div class="tool-btn blue" onclick="toggleMap('ofac', this)">OFAC</div>
+            <div class="tool-btn blue" onclick="toggleMap('arpt', this)">ARPT</div>
+        </div>
+        </div>
+
+        <div id="row2-content">
+            <div class="tool-btn peach" onclick="handleTrigger(this, 2, 'views')">VIEWS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'check')">CHECK<br>LISTS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'cmd')">COMMAND<br>MENUS</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'zrf')">ZRF</div>
+            <div class="tool-btn black">ALT LIM<br>000B000</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'filter')">RADAR<br>FILTER</div>
+            <div class="tool-btn blue" onclick="handleTrigger(this, 2, 'pref')">PREFSET</div>
+            <div class="tool-btn cyan">DELETE<br>TEAROFF</div>
+        </div>
+    </div>
+
+    <div id="row3" class="toolbar-row">
+    </div>
+        
+        <div id="menu-draw" class="menu-content" style="display:none;"></div>
+        <div id="menu-atc" class="menu-content" style="display:none;"></div>
+        <div id="menu-ab" class="menu-content" style="display:none;"></div>
+        <div id="menu-cursor" class="menu-content" style="display:none;"></div>
+        <div id="menu-bright" class="menu-content" style="display:none;"></div>
+        <div id="menu-font" class="menu-content" style="display:none;"></div>
+        <div id="menu-db" class="menu-content" style="display:none;"></div>
+        <div id="menu-check" class="menu-content" style="display:none;"></div>
+        <div id="menu-cmd" class="menu-content" style="display:none;"></div>
+        <div id="menu-zrf" class="menu-content" style="display:none;"></div>
+        <div id="menu-filter" class="menu-content" style="display:none;"></div>
+        <div id="menu-pref" class="menu-content" style="display:none;"></div>
+    </div>
+</div>
+
+<div id="radar-container">
+    <canvas id="map-layer"></canvas>
+    <canvas id="bound-layer"></canvas>
+    <canvas id="fac7-layer"></canvas>
+    <canvas id="fac25-layer"></canvas>
+    <canvas id="msa-layer"></canvas>
+    <canvas id="ofac-layer"></canvas>
+    <canvas id="arpt"></canvas>
+    <canvas id="radar"></canvas>
+</div>
+
+<div id="mca">
+    <div id="mca-command">
+        &gt;&nbsp;<input type="text" id="mca-input" autofocus autocomplete="off">
+    </div>
+    <div id="mca-feedback">
+        ERAM READY
+    </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    let aircraft = {}, controlledAircraft = new Set();
+    let offset = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    let zoom = 0.012, mapScale = 6.65, mapOffsetX = -1020, mapOffsetY = 200;
+    let mousePos = { x: 0, y: 0 }, isDragging = false, lastPos = { x: 0, y: 0 };
+
+    let persistentAlts = {};
+    let localBlacklist = new Set(); 
+    window.persistentFields = {}; 
+    let isDrawingRoute = false;
+    let currentRoutePoints = [];
+
+    const layers = {
+        base: { data: [], src: '/./videomaps/ircc/island.json', id: 'map-layer', visible: false, color: '#667' },
+        bound: { data: [], src: '/./videomaps/ircc/airspace.json', id: 'bound-layer', visible: false, alpha: 0.8, color: '#667' },
+        fac7: { data: [], src: '/./videomaps/ircc/fac7.json', id: 'fac7-layer', visible: false, alpha: 0.8, color: '#667' },
+        fac25: { data: [], src: '/./videomaps/ircc/fac25.json', id: 'fac25-layer', visible: false, alpha: 0.8, color: '#667' },
+        msa: { data: [], src: '/./videomaps/ircc/msa.json', id: 'msa-layer', visible: false, alpha: 0.2, color: '#667' },
+        ofac: { data: [], src: '/./videomaps/ircc/ofac.json', id: 'ofac-layer', visible: false, alpha: 0.8, color: '#667' },
+        arpt: { data: [], src: '/./videomaps/ircc/arpt.json', id: 'arpt', visible: false, alpha: 0.2, color: '#667'}
+    };
+
+    const radarCanvas = document.getElementById('radar');
+    const ctx = radarCanvas.getContext('2d');
+    const container = document.getElementById('radar-container');
+    const mcaInput = document.getElementById('mca-input');
+    const mcaFeedback = document.getElementById('mca-feedback');
+
+    const socket = io(window.location.origin)
+
+    socket.on('connect', () => { mcaFeedback.innerText = "ERAM CONNECTED"; });
+
+    socket.on('radarUpdate', data => { 
+        let filteredData = {};
+        for (let call in data) {
+            let ac = data[call];
+            if (localBlacklist.has(ac.flid)) continue;
+            if (persistentAlts[ac.flid]) {
+                if (!ac.flightPlan) ac.flightPlan = {};
+                ac.flightPlan.altitude = persistentAlts[ac.flid];
+            }
+            if (window.persistentFields[ac.flid]) {
+                if (!ac.flightPlan) ac.flightPlan = {};
+                Object.assign(ac.flightPlan, window.persistentFields[ac.flid]);
+            }
+            filteredData[call] = ac;
+        }
+        aircraft = filteredData; 
+    });
+
+    window.onload = () => {
+    // 1. Initialize Images for layers that use them
+    for (let key in layers) {
+        if (layers[key].src.endsWith('.png')) {
+            layers[key].img.src = layers[key].src;
+            layers[key].img.onload = () => drawAllMaps();
+        }
+    }
+
+    // 2. Fetch JSON data for the bound layer
+    // 2. Fetch JSON data for the base map (island.json)
+fetch(layers.base.src) // Use base.src here
+    .then(response => {
+        if (!response.ok) throw new Error("JSON not found");
+        return response.json();
+    })
+    .then(json => {
+        // Handle your new 'segments' format or the old 'points' format
+        if (json.segments) {
+            layers.base.segments = json.segments;
+        } else {
+            layers.base.data = json.points || [];
+        }
+        if (json.labels) layers.base.labels = json.labels; // Capture the labels!
+        drawAllMaps();
+    })
+    
+    .catch(err => console.error("Error loading island map:", err));
+
+    fetch(layers.bound.src)
+    .then(res => res.json())
+    .then(json => {
+        layers.bound.segments = json.segments || [];
+        layers.bound.labels = json.labels || []; // Ensure labels load here too!
+        drawAllMaps();
+    });
+    fetch(layers.fac7.src)
+    .then(res => res.json())
+    .then(json => {
+        layers.fac7.segments = json.segments || [];
+        layers.fac7.labels = json.labels || []; // Ensure labels load here too!
+        drawAllMaps();
+    });
+    fetch(layers.fac25.src)
+    .then(res => res.json())
+    .then(json => {
+        layers.fac25.segments = json.segments || [];
+        layers.fac25.labels = json.labels || []; // Ensure labels load here too!
+        drawAllMaps();
+    });
+    fetch(layers.msa.src)
+    .then(res => res.json())
+    .then(json => {
+        layers.msa.segments = json.segments || [];
+        layers.msa.labels = json.labels || []; // Ensure labels load here too!
+        drawAllMaps();
+    });
+
+    fetch(layers.ofac.src)
+    .then(res => res.json())
+    .then(json => {
+        layers.ofac.segments = json.segments || [];
+        layers.ofac.labels = json.labels || []; // Ensure labels load here too!
+        drawAllMaps();
+    });
+    fetch(layers.arpt.src)
+    .then(res => res.json())
+    .then(json => {
+        layers.arpt.segments = json.segments || [];
+        layers.arpt.labels = json.labels || []; // Ensure labels load here too!
+        drawAllMaps();
+    });
+
+    setupInteractions();
+    resize(); // This sets the canvas widths
+    drawLoop(); // Starts the radar animation
+    mcaInput.focus();
+};
+
+    // Main MCA Command Listener
+    mcaInput.addEventListener('keydown', (e) => {
+        if (isDrawingRoute && e.key === 'Backspace') {
+            if (mcaInput.value === '') {
+        e.preventDefault(); // Prevent browser from going "back"
+        if (currentRoutePoints.length > 0) {
+            currentRoutePoints.pop(); // Remove last point
+            updateRouteClipboard(); // Update clipboard
+            setFeedback([`Undo: Point Removed`, `Points Left: ${currentRoutePoints.length}`]);
+        }}
+        function updateRouteClipboard() {
+            const jsonString = JSON.stringify(currentRoutePoints);
+            navigator.clipboard.writeText(jsonString);
+        }
+        }
+        if (e.key === 'Enter') {
+            const cmdStr = mcaInput.value.trim().toUpperCase();
+            mcaInput.value = '';
+            if (!cmdStr) return;
+            const p = cmdStr.split(' ');
+            const cmd = p[0];
+
+
+            // 1. HANDOFF LOGIC: Sector Number (1-8) + FLID
+            if (cmd.length === 1 && "12345678".includes(cmd)) {
+                const target = cmd;
+                const flid = p[1];
+                const ac = findByFlid(flid);
+                if (ac) {
+                    socket.emit('initiateHandoff', { callsign: ac.callsign, targetSector: target });
+                    setFeedback([`✅ HANDOFF: ${ac.callsign}`, `TO SECTOR ${target}`]);
+                }
+                return;
+            }
+
+            // 2. ACCEPT LOGIC: Just typing the 3-digit FLID
+            if (cmd.length === 3 && !isNaN(cmd)) {
+                const ac = findByFlid(cmd);
+                if (ac && ac.handoffTarget) {
+                    socket.emit('acceptHandoff', { callsign: ac.callsign });
+                    setFeedback([`✅ ${ac.callsign} ACCEPTED`]);
+                }
+                return;
+            }
+
+            if (cmd === '.DRAWROUTE') {
+                isDrawingRoute = !isDrawingRoute;
+                currentRoutePoints = []; // Clear for new map
+                setFeedback([isDrawingRoute ? "🛠️ DRAW MODE: ON" : "🛠️ DRAW MODE: OFF", "Click to place points"]);
+            }
+            
+            // Standard Commands
+            if (cmd === 'AM') {
+                const type = p[1], flid = p[2], val = p.slice(3).join(' '), ac = findByFlid(flid);
+                if (!ac) return;
+                let field = type === '1' ? 'callsign' : type === '2' ? 'arriving' : 'route';
+                if (!window.persistentFields[flid]) window.persistentFields[flid] = {};
+                window.persistentFields[flid][field] = val;
+                socket.emit('updateFPLField', { flid, field, value: val });
+                setFeedback(["✅ ACCEPT", `${flid} AMENDED`]);
+            }
+            else if (cmd === 'QF') {
+                const flid = p[1], ac = findByFlid(flid);
+                if (!ac || !ac.flightPlan) { setFeedback(["❌ DECLINE", "NO FPL"]); return; }
+                const f = ac.flightPlan;
+                const squawk = f.squawk || generateSquawk();
+                if (!f.squawk) f.squawk = squawk; 
+                setFeedback([
+                    `✅ ACCEPT FPL ${flid}`, 
+                    `SQ ${squawk} | ALT ${f.altitude || "000"}`, 
+                    `${flid} ${f.callsign || "UNK"} ${f.aircraft || "UNK"}`, 
+                    `${f.departing || "ZZZZ"} . ${f.route || "DIRECT"} . ${f.arriving || "ZZZZ"}`
+                ]);
+            }
+            else if (cmd === 'QZ') {
+                const flid = p[1], alt = p[2], ac = findByFlid(flid);
+                if (!ac) return;
+                persistentAlts[flid] = alt; 
+                socket.emit('updateAssignedAlt', { flid, newAlt: alt });
+                setFeedback([`✅ ACCEPT ${flid}`, `NEW ALT ${alt}`]);
+            }
+            else if (cmd === 'QD') {
+                const flid = p[1], ac = findByFlid(flid);
+                if (!ac) return;
+                localBlacklist.add(flid); 
+                socket.emit('deleteAircraft', { flid });
+                setFeedback(["✅ ACCEPT", `${flid} DELETED`]);
+            }
+            else if (cmd === 'QU') {
+                const flid = p[1];
+                localBlacklist.delete(flid);
+                socket.emit('restoreAircraft', { flid });
+                setFeedback(["✅ ACCEPT", `${flid} RESTORED`]);
+            }
+            if (cmd === '.DONE') {
+                isDrawingRoute = false;
+                currentRoutePoints = [];
+                setFeedback(["✅ DRAWING SAVED", "CLIPBOARD UPDATED"]);
+            }
+        }
+    });
+
+    window.addEventListener('keydown', () => {
+        if (document.activeElement !== mcaInput) mcaInput.focus();
+    });
+
+    function findByFlid(flid) { return Object.values(aircraft).find(a => a.flid === flid); }
+    function setFeedback(lines) { mcaFeedback.innerHTML = lines.join('<br>'); }
+
+    let activeButton = null;
+    let originalParent = null;
+    let originalSibling = null;
+
+    function handleTrigger(btn, rowNum, menuId) {
+        const container = document.getElementById('toolbar-container');
+        if (activeButton === btn) { resetToolbar(); return; }
+        if (activeButton) resetToolbar();
+        activeButton = btn;
+        originalParent = btn.parentNode;
+        originalSibling = btn.nextSibling;
+        document.getElementById(`row${rowNum}-active-slot`).appendChild(btn);
+        container.classList.add(`r${rowNum}-active`);
+        const menu = document.getElementById(`${menuId}-menu`);
+        if (menu) menu.style.display = 'flex';
+    }
+
+    function resetToolbar() {
+        if (!activeButton) return;
+        const container = document.getElementById('toolbar-container');
+        document.querySelectorAll('.menu-group').forEach(m => m.style.display = 'none');
+        originalParent.insertBefore(activeButton, originalSibling);
+        container.classList.remove('r1-active', 'r2-active');
+        activeButton = null;
+    }
+
+    function toggleMapMenu() {
+        const dropdown = document.getElementById('map-dropdown');
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function toggleMap(id, btnElement) {
+        if (!layers[id]) return;
+        layers[id].visible = !layers[id].visible;
+        if (btnElement) btnElement.classList.toggle('active');
+        drawAllMaps();
+    }
+
+    function generateSquawk() {
+        let code = "";
+        const firstDigit = Math.floor(Math.random() * 4) + 2; 
+        code += firstDigit;
+        for (let i = 0; i < 3; i++) { code += Math.floor(Math.random() * 8); }
+        const restricted = ["1200", "7500", "7600", "7700", "0000"];
+        return restricted.includes(code) ? generateSquawk() : code;
+    }
+
+    function drawLoop() {
+        ctx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+        Object.keys(aircraft).forEach(call => {
+            const a = aircraft[call];
+            if (!a.position || a.isOnGround) return;
+            const x = Math.round(a.position.x * zoom + offset.x);
+            const y = Math.round(a.position.y * zoom + offset.y);
+            const isHooked = controlledAircraft.has(call);
+
+            let tagColor = a.isCoasting ? '#ffffff' : '#ffff00';
+            ctx.fillStyle = ctx.strokeStyle = tagColor;
+            ctx.font = "bold 16px monospace";
+
+            if (isHooked) { 
+                ctx.fillRect(x - 2, y - 2, 4, 4); 
+            } else { 
+                ctx.beginPath(); ctx.moveTo(x-4, y+4); ctx.lineTo(x+4, y-4); ctx.stroke(); 
+            }
+
+            // Handoff Text Logic
+// Inside your drawLoop function:
+            let callsign = a.flightPlan?.callsign || a.playerName || "UNK";
+
+            if (a.handoffTarget) {
+                // Blinks every 500ms (1000ms total cycle)
+                if (Math.floor(Date.now() / 500) % 2 === 0) {
+                    callsign += ` H-${a.handoffTarget}`;
+                } else {
+                    // Keeps the spacing so the tag doesn't "jitter" or bounce
+                    callsign += `    `; 
+                }
+            }
+
+            let currentAltStr = Math.round(a.altitude / 100).toString().padStart(3, '0');
+            const tx = x + 12, ty = y - 5;
+
+            if (isHooked) {
+                let assignedAlt = parseInt(a.flightPlan?.altitude || "000");
+                let curAltInt = Math.round(a.altitude / 100);
+                let indicator = " ";
+                if (Math.abs(curAltInt - assignedAlt) <= 3) indicator = "C";
+                else if (assignedAlt > curAltInt) indicator = "↑";
+                else if (assignedAlt < curAltInt) indicator = "↓";
+
+                let dispAssigned = assignedAlt.toString().padStart(3, '0');
+                let gs = Math.round((a.groundSpeed || 0) * 2).toString().padStart(3, '0');
+                let flid = a.flid || "000";
+                let dest = a.flightPlan?.arriving || "---";
+
+                ctx.fillText(a.isCoasting ? callsign + " CST" : callsign, tx, ty - 20);
+                ctx.fillText(`${dispAssigned}${indicator}${currentAltStr}`, tx, ty - 5);
+                ctx.fillText(`${flid} ${gs}`, tx, ty + 10);
+                ctx.fillText(dest, tx, ty + 25);
+            } else {
+                ctx.fillText(callsign, tx, ty - 5);
+                ctx.fillText(currentAltStr, tx, ty + 10);
+            }
+
+            if (a.groundSpeed > 5 && a.heading !== undefined) {
+                const vectorLength = (a.groundSpeed * 0.5) * zoom;
+                const angleRad = (a.heading - 90) * (Math.PI / 180);
+                const vx = x + Math.cos(angleRad) * vectorLength;
+                const vy = y + Math.sin(angleRad) * vectorLength;
+                ctx.beginPath(); ctx.setLineDash([2, 2]); ctx.moveTo(x, y); ctx.lineTo(vx, vy); ctx.stroke(); ctx.setLineDash([]);
+            }
+        });
+
+        // --- ADD THIS TO THE BOTTOM OF drawLoop ---
+        if (isDrawingRoute && currentRoutePoints.length > 0) {
+            ctx.beginPath();
+            ctx.strokeStyle = "#00FF00"; // Bright Green for the editor
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]); // Ensure solid lines
+
+            currentRoutePoints.forEach((p, i) => {
+                const sx = p.x * zoom + offset.x;
+                const sy = p.y * zoom + offset.y;
+                
+                if (i === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+
+                // Draw a small square at each point
+                ctx.strokeRect(sx - 3, sy - 3, 6, 6);
+            });
+            ctx.stroke();
+        }
+        // --- END ADDITION ---
+
+        // Cursor
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.beginPath();
+        ctx.moveTo(mousePos.x, mousePos.y - 10); ctx.lineTo(mousePos.x, mousePos.y + 10);
+        ctx.moveTo(mousePos.x - 10, mousePos.y); ctx.lineTo(mousePos.x + 10, mousePos.y);
+        ctx.stroke();
+
+        requestAnimationFrame(drawLoop);
+    }
+function drawAllMaps() {
+    for (let key in layers) {
+        const l = layers[key];
+        const layerCanvas = document.getElementById(l.id);
+        if (!layerCanvas) continue;
+        const mCtx = layerCanvas.getContext('2d');
+        mCtx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+        if (!l.visible) continue;
+
+        // 1. DYNAMIC LABELS (Scales with zoom)
+        if (l.labels) {
+            let dynamicSize = Math.max(10, 800 * zoom); 
+            mCtx.fillStyle = l.color || '#fff';
+            mCtx.font = `bold ${dynamicSize}px 'Intel One Mono', monospace`;
+            mCtx.textAlign = "center";
+            mCtx.textBaseline = "middle";
+
+            l.labels.forEach(lbl => {
+                const sx = lbl.x * zoom + offset.x;
+                const sy = lbl.y * zoom + offset.y;
+                mCtx.fillText(lbl.text, sx, sy);
+            });
+        }
+
+        mCtx.strokeStyle = l.color || '#fff';
+        mCtx.lineWidth = 1.5;
+
+        // 2. DRAW SEGMENTS (Handles solid/dashed and old/new formats)
+        if (l.segments) {
+            l.segments.forEach(segment => {
+                // Determine if it's the new object style {points:[], dashed:true} or old array style [p1, p2]
+                const points = Array.isArray(segment) ? segment : (segment.points || []);
+                const isDashed = segment.dashed || false;
+
+                if (points.length < 2) return; // Skip empty segments
+
+                mCtx.beginPath();
+                
+                // Apply dash if needed
+                if (isDashed) {
+                    mCtx.setLineDash([5, 5]); 
+                } else {
+                    mCtx.setLineDash([]); 
+                }
+
+                points.forEach((p, i) => {
+                    const sx = p.x * zoom + offset.x;
+                    const sy = p.y * zoom + offset.y;
+                    if (i === 0) mCtx.moveTo(sx, sy);
+                    else mCtx.lineTo(sx, sy);
+                });
+
+                mCtx.stroke();
+                mCtx.setLineDash([]); // Always reset after each segment
+            });
+        }
+        
+        // 3. LEGACY DATA (If you still use l.data)
+        else if (l.data && l.data.length > 0) {
+            mCtx.beginPath();
+            l.data.forEach((p, i) => {
+                const sx = p.x * zoom + offset.x;
+                const sy = p.y * zoom + offset.y;
+                if (i === 0) mCtx.moveTo(sx, sy);
+                else mCtx.lineTo(sx, sy);
+            });
+            mCtx.stroke();
+        } 
+
+        // 4. DRAW IMAGES
+        if (l.img && l.img.complete && l.img.src && !l.img.src.includes('undefined')) {
+            const imgW = Math.round(l.img.width * zoom * mapScale);
+            const imgH = Math.round(l.img.height * zoom * mapScale);
+            const mapX = Math.round(offset.x + (mapOffsetX * zoom) - (imgW / 2));
+            const mapY = Math.round(offset.y + (mapOffsetY * zoom) - (imgH / 2));
+            mCtx.globalAlpha = l.alpha || 1.0;
+            mCtx.drawImage(l.img, mapX, mapY, imgW, imgH);
+            mCtx.globalAlpha = 1.0;
+        }
+    }
+}
+
+    function setupInteractions() {
+        window.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.1 : 0.9;
+            const wx = (mousePos.x - offset.x) / zoom;
+            const wy = (mousePos.y - offset.y) / zoom;
+            zoom *= factor;
+            offset.x = mousePos.x - wx * zoom;
+            offset.y = mousePos.y - wy * zoom;
+            drawAllMaps();
+        }, { passive: false });
+
+        window.onmousemove = (e) => {
+            const rect = radarCanvas.getBoundingClientRect();
+            mousePos.x = e.clientX - rect.left;
+            mousePos.y = e.clientY - rect.top;
+            if (isDragging) {
+                offset.x += e.clientX - lastPos.x;
+                offset.y += e.clientY - lastPos.y;
+                lastPos = { x: e.clientX, y: e.clientY };
+                drawAllMaps();
+            }
+        };
+
+        radarCanvas.onmousedown = (e) => {
+            e.preventDefault();
+            if (isDrawingRoute && e.button === 0) { // Left Click
+                // Calculate world coordinates so the lines stay with the planes
+                const worldX = (mousePos.x - offset.x) / zoom;
+                const worldY = (mousePos.y - offset.y) / zoom;
+
+                currentRoutePoints.push({ x: Math.round(worldX), y: Math.round(worldY) });
+
+                // Copy to clipboard in a format you can just paste into a JS array
+                const jsonString = JSON.stringify(currentRoutePoints);
+                navigator.clipboard.writeText(jsonString);
+                
+                setFeedback([`📍 POINT ${currentRoutePoints.length} ADDED`, "COPIED TO CLIPBOARD"]);
+                return;
+            }
+            if (e.button === 1) { // Middle Click
+                for (let call in aircraft) {
+                    const a = aircraft[call];
+                    const x = a.position.x * zoom + offset.x;
+                    const y = a.position.y * zoom + offset.y;
+                    if (Math.hypot(mousePos.x - x, mousePos.y - y) < 20) {
+                        // Accept Handoff on Middle Click if tag is present
+                        if (a.handoffTarget) {
+                            socket.emit('acceptHandoff', { callsign: a.callsign });
+                        } else {
+                            if (controlledAircraft.has(call)) controlledAircraft.delete(call);
+                            else controlledAircraft.add(call);
+                        }
+                        break;
+                    }
+                }
+            } else { isDragging = true; lastPos = { x: e.clientX, y: e.clientY }; }
+        };
+        window.onmouseup = () => isDragging = false;
+        radarCanvas.onclick = () => mcaInput.focus();
+    }
+
+    function resize() {
+        document.querySelectorAll('canvas').forEach(c => {
+            c.width = container.clientWidth; c.height = container.clientHeight;
+        });
+        drawAllMaps();
+    }
+    window.onresize = resize;
+</script>
+</body>
+
+</html>

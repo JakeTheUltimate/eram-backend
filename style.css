@@ -1,0 +1,224 @@
+body { 
+            background: #000; color: #CCCC00; font-family: 'Consolas', monospace; 
+            margin: 0; display: flex; flex-direction: column; 
+            height: 100vh; width: 100vw; overflow: hidden;
+        }
+        #toolbar { 
+            background: black; height: 45px; display: flex; align-items: center; 
+            gap: 5px; padding: 0 10px; border-bottom: 1px solid #444; flex-shrink: 0; 
+        }
+        .btn { 
+            background: black; color: #fff; border: 1px solid #666; 
+            padding: 6px 12px; font-size: 11px; cursor: pointer; text-transform: uppercase;
+        }
+        .btn.active { background: #bbb; color: black; border: 1px solid #fff; }
+        .btn-back { border-color: #ff4444 !important; color: #ff4444 !important; }
+
+        #radar-container { flex-grow: 1; position: relative; background: #000022; overflow: hidden; cursor: none; }
+        canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+        #radar { pointer-events: auto; }
+        
+        .row1, .tab-row, .views-row { 
+        display: flex; 
+        flex-direction: row; 
+        border-bottom: 1px solid #000; 
+        }
+        #toolbar-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background: #444;
+        font-family: 'monospace';
+        font-weight: bold;
+        user-select: none;
+        z-index: 1000;
+        padding-bottom: 10px;
+        }
+        #row1, #row2 {
+        display: flex;
+        height: 45px;
+        border-bottom: 1px solid #444;
+        }
+        #row3 {
+        display: none; /* This is the key: it removes it from the layout */
+        background: #000;
+        height: 45px;
+        width: 100%;
+        border-bottom: 1px solid #444;
+        flex-direction: row;
+        align-items: center;
+        }
+        .toolbar-row { display: flex; border-bottom: 1px solid #000; }
+        /* Color Palette */
+        .blue { background: #003399; color: white; }
+        .black { background: #000; color: white; }
+        .green { background: #009933; color: white; }
+        .peach { background: #ff9966; color: black; }
+        .cyan { background: #00cccc; color: black; flex-grow: 1; }
+        .tan { background: #ffffcc; color: black; }
+        .grey { background: #999; color: black; }
+        .active { outline: 2px solid yellow; z-index: 2; }
+
+        #row1-content, 
+        #row2-content{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: stretch;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            left: 85px;
+            top: 90px;
+            background: #00cccc;
+            border: 2px solid gold;
+            width: 120px;
+        }
+        .drop-item {
+            padding: 4px;
+            border-bottom: 1px solid black;
+            color: black;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .drop-item:hover { background: #00aaaa; }
+        .drop-item.active { background: #ffff00; }
+
+        #command-line { background: black; color: white; padding: 10px; border-top: 1px solid #333; font-size: 18px; flex-shrink: 0; }
+        input { background: transparent; border: none; color: white; outline: none; width: 90%; font-family: inherit; }
+        #mca {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 20vw; /* Increased from 12.5vw */
+            height: 22vh; 
+            background: black;
+            border: 1.5px solid #555;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+
+        #mca-command {
+            height: 25%;
+            border-bottom: 1.5px solid #555;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            color: #fff;
+            font-size: 20px;
+        }
+
+        #mca-input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            outline: none;
+            width: 100%;
+            font-family: 'intel-one-mono', Verdana;
+            text-transform: uppercase;
+            font-size: 24px;
+        }
+
+        #mca-feedback {
+            height: 75%;
+            padding: 8px 10px;
+            color: #fff; /* Static text is now White */
+            font-size: 24px; /* Bigger text */
+            font-weight: bold;
+            pointer-events: none;
+            line-height: 1.3;
+            font-family: 'intel-one-mono', Verdana;
+            margin-top: 5px;
+            min-height: 40px;
+        }
+        #mca-container {
+            padding: 10px;
+            background: #000;
+        }
+        .row1-style { background: #000;}
+        .row1-empty { background: #666 !important; } 
+
+        .tool-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 15px;
+        border-right: 1px solid #666;
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+        min-width: 90px;
+        height: 100%;
+        white-space: nowrap;
+        }
+        .workspace-row {
+        background: #444;
+        height: 45px;
+        display: flex;
+        align-items: center;
+        }
+
+        .menu-content {
+        flex-grow: 1;
+        padding-left: 20px;
+        color: white;
+        font-size: 14px;
+        }
+        .toolbar-row { display: flex; height: 45px; border-bottom: 1px solid #666; background: #666; flex-direction: row;}
+        .gray-out { background: #666 !important; }
+
+/* The button moved to the top left should stand out */
+        .active-mode {
+        background: #666 !important;
+        color: #fff !important;
+        border: 2px solid yellow !important;
+        }
+
+        #row1-active-slot, #row2-active-slot {
+        display: flex;
+        flex-direction: row;
+        }
+        #row3 {
+        display: none; /* This is the key: it removes it from the layout */
+        background: #666;
+        height: 45px;
+        width: 100%;
+        border-bottom: 1px solid #444;
+        flex-direction: row;
+        align-items: center;
+        }
+        /* 1. When Row 1 is active: Hide Row 1 neighbors, Gray out Row 2, Kill Row 3 */
+        #toolbar-container.r1-active #row1-content { display: none !important; }
+        #toolbar-container.r1-active #row2 { background: #666 !important; }
+        #toolbar-container.r1-active #row2-content { visibility: hidden !important; }
+        #toolbar-container.r1-active #row3 { display: none !important; }
+
+/* 2. When Row 2 is active: Hide Row 2 neighbors, Gray out Row 1, Show Row 3 */
+        #toolbar-container.r2-active #row2-content { display: none !important; }
+        #toolbar-container.r2-active #row1 { background: #666 !important; }
+        #toolbar-container.r2-active #row1-content { visibility: hidden !important; }
+        #toolbar-container.r2-active #row3 { display: flex !important; background: #666; }
+
+/* Ensure active slots are always visible regardless of state */
+        #row1-active-slot, #row2-active-slot { display: flex !important; }
+        #row3-content .tool-btn {
+        height: 45px; /* Force height to match the bar */
+        line-height: 45px; /* Center text vertically if needed */
+        box-sizing: border-box;
+        border-bottom: none; /* Keep it clean */
+        }
+        .menu-group .tool-btn {
+            width: 90px;
+            height: 45px;
+            border-right: 1px solid #666;
+        }
+        /* When Row 2 is active: Hide Row 2 neighbors, Show Row 3 */
+        #toolbar-container.r2-active #row2-content { display: none !important; }
+
+        /* Critical: This forces Row 3 to show when a Row 2 button is hooked */
+        #toolbar-container.r2-active #row3 { 
+            display: flex !important; 
+            background: #666; /* Match the radar/ERAM black background */
+        }

@@ -1,0 +1,10 @@
+body { background: #050505; color: #00ff00; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 50px; }
+        .grid { display: grid; grid-template-columns: repeat(2, 350px); gap: 20px; }
+        .sector-btn { background: #111; border: 1px solid #00ff00; padding: 20px; cursor: pointer; }
+        .sector-btn:hover:not(.disabled) { background: #004400; }
+        .sector-btn.disabled { border-color: #500; color: #555; cursor: not-allowed; }
+        .status-tag { float: right; }
+        #login-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; }
+        .login-box { border: 2px solid #00ffff; padding: 30px; background: #000; text-align: center; }
+        input { background: #111; border: 1px solid #00ffff; color: #fff; padding: 10px; margin: 10px; width: 200px; text-align: center; }
+        button#go { background: #00ffff; color: #000; border: none; padding: 10px 30px; font-weight: bold; cursor: pointer; }
